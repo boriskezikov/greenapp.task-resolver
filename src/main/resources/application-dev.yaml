@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: task-resolver
+server:
+  port: 9092
+db:
+  host: localhost
+  port: 54320
+  database: task_resolver
+  username: postgres
+  password: admin
