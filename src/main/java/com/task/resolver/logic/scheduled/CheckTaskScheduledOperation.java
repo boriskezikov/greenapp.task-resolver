@@ -9,11 +9,15 @@ import com.task.resolver.service.rest.RestAdapter.AccrualMoneyRequest;
 import com.task.resolver.service.rest.RestAdapter.ChangeTaskStatusRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationStartedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
+
+import static com.task.resolver.utils.Utils.logProcess;
 
 @Component
 @RequiredArgsConstructor
@@ -33,6 +37,8 @@ public class CheckTaskScheduledOperation extends Thread {
     private Long completeReward;
     @Value("${client.reward.trash-attendee}")
     private Long trashReward;
+
+    private static final Logger log = LoggerFactory.getLogger(CheckTaskScheduledOperation.class);
 
     private FindByTimeShiftAndCounterRequest approvingRequest;
     private FindByTimeShiftAndCounterRequest completingRequest;
@@ -55,7 +61,8 @@ public class CheckTaskScheduledOperation extends Thread {
     @SneakyThrows
     public void run() {
         handler.inTxMono(h -> {
-            var readyForCompletingFlux = r2dbcAdapter.findTasksForApproving(h, approvingRequest).cache();
+            var readyForCompletingFlux = r2dbcAdapter.findTasksForApproving(h, approvingRequest)
+                .cache();
             var readyForApprovingFlux = r2dbcAdapter.findTasksForApproving(h, completingRequest).cache();
             var readyForTrashingFlux = r2dbcAdapter.findTasksForTrashing(h, trashingRequest).cache();
 
@@ -87,7 +94,9 @@ public class CheckTaskScheduledOperation extends Thread {
                 approvingClientReward, completingClientReward, trashingClientReward,
                 statusToApprove, statusToComplete, statusToTrashed,
                 cleanUpClientEntries);
-        }).subscribe();
+        })
+            .as(logProcess(log, "CheckTaskScheduledOperation"))
+            .subscribe();
     }
 
     @RequiredArgsConstructor

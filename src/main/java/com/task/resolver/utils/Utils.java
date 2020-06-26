@@ -8,7 +8,7 @@ import java.util.function.Function;
 
 public class Utils {
 
-    public static <T> Function<Mono<T>, Mono<T>> logProcess(Logger log, String point, Object request) {
+    public static <T> Function<Mono<T>, Mono<T>> logProcess(Logger log, String point, Object... request) {
         return mono -> Mono.deferWithContext((ctx) -> {
             log.info("{}.process.in request = {}", point, request);
             return mono
