@@ -15,7 +15,6 @@ public class ExecutorServiceConfiguration {
     public ExecutorService executorService(CheckTaskScheduledOperation scheduledOperation) {
         var scheduler = Executors.newScheduledThreadPool(3);
         scheduler.scheduleWithFixedDelay(scheduledOperation, 0, 1, TimeUnit.MINUTES);
-        ;
         return scheduler;
     }
 }
