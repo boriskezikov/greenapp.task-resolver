@@ -4,6 +4,8 @@ import com.task.resolver.model.Event;
 import com.task.resolver.model.Status;
 import com.task.resolver.service.dao.R2dbcAdapter;
 import com.task.resolver.service.dao.R2dbcHandler;
+import com.task.resolver.service.rest.RestAdapter;
+import com.task.resolver.service.rest.RestAdapter.ChangeTaskStatusRequest;
 import io.r2dbc.client.Update;
 import lombok.RequiredArgsConstructor;
 import lombok.ToString;
@@ -22,18 +24,35 @@ public class ObtainTaskOperation {
 
     private final R2dbcAdapter r2dbcAdapter;
     private final R2dbcHandler r2dbcHandler;
+    private final RestAdapter restAdapter;
 
     public Mono<Void> process(ObtainTaskRequest request) {
         return r2dbcHandler.inTxMono(
             h -> {
-                var oldTaskEntry = r2dbcAdapter.findByTaskId(request.taskId);
-                var updateOldTaskEntry = oldTaskEntry
-                    .flatMap(t -> r2dbcAdapter.delete(h, request));
-                var insertTaskEntry = r2dbcAdapter.insert(h, request);
-
-                return Mono.when(oldTaskEntry, updateOldTaskEntry, insertTaskEntry);
+                var updateStatusRequest = resolveUpdateStatusRequest(request.status, request.taskId);
+                var insertTaskEntry = resolveInsert(request.status)
+                    .flatMap(s -> r2dbcAdapter.insertOnConflictUpdate(h, new ObtainTaskRequest(request.taskId, s)));
+                var updateStatus = updateStatusRequest
+                    .flatMap(restAdapter::changeTaskStatus);
+                return Mono.when(insertTaskEntry, updateStatus);
             }
         ).as(logProcess(log, "ObtainTaskOperation", request));
+    }
+
+    private Mono<ChangeTaskStatusRequest> resolveUpdateStatusRequest(Status status, Long taskId) {
+        return switch (status) {
+            case CREATED -> new ChangeTaskStatusRequest(Status.WAITING_FOR_APPROVE, taskId).asMono();
+            case APPROVED -> new ChangeTaskStatusRequest(Status.TO_DO, taskId).asMono();
+            default -> Mono.empty();
+        };
+    }
+
+    private Mono<Status> resolveInsert(Status status) {
+        return switch (status) {
+            case CREATED -> Status.WAITING_FOR_APPROVE.asMono();
+            case RESOLVED -> Status.RESOLVED.asMono();
+            default -> Mono.empty();
+        };
     }
 
     @ToString

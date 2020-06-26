@@ -9,6 +9,10 @@ db:
   database: d9gpt70d96ibeo
   username: ivwpvmnbfnrity
   password: 8b64f5b33535a1bd31f4872f4b7319c63543c6286399ad1183e88035abce8880
+rest:
+  base-urls:
+    task-provider: http://greenapp-task-provider.herokuapp.com
+    reward-manager: http://greenapp-reward-manager.herokuapp.com
 kafka:
   properties:
     "[bootstrap.servers]": moped-01.srvs.cloudkafka.com:9094,moped-02.srvs.cloudkafka.com:9094,moped-03.srvs.cloudkafka.com:9094
@@ -17,3 +21,14 @@ kafka:
     "[security.protocol]": SASL_SSL
     "[sasl.mechanism]": SCRAM-SHA-256
   topic: 2z2j7jw9-task-event
+task:
+  processing:
+    waiting-for-approve-m: 2
+    resolved-m: 2
+    waiting-for-approve-count: 10
+    task.processing.resolved-count: 10
+client:
+  reward:
+    approve-attendee: 100
+    complete-attendee: 100
+    trash-attendee: 20
