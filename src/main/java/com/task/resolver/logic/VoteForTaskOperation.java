@@ -9,7 +9,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
+import static com.task.resolver.exception.ApplicationError.ENTRY_NOT_FOUND_BY_TASK_ID;
 import static com.task.resolver.utils.Utils.logProcess;
+import static java.lang.String.format;
 
 @Component
 @RequiredArgsConstructor
@@ -20,7 +22,9 @@ public class VoteForTaskOperation {
     private final R2dbcAdapter r2dbcAdapter;
 
     public Mono<Void> process(VoteForTaskRequest request) {
-        return r2dbcAdapter.insertTaskVote(request)
+        return r2dbcAdapter.findByTaskId(request.taskId)
+            .switchIfEmpty(ENTRY_NOT_FOUND_BY_TASK_ID.exceptionMono(format("Entry with task id = %s not found", request.taskId)))
+            .then(r2dbcAdapter.insertTaskVote(request))
             .then(r2dbcAdapter.insertClientVote(request))
             .as(logProcess(log, "VoteForTaskOperation", request));
     }

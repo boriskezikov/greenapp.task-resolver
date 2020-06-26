@@ -36,8 +36,9 @@ public class R2dbcAdapter {
 
     public Mono<Void> insertTaskVote(VoteForTaskRequest request) {
         return this.handler.withHandle(h -> {
-            var sql = "UPDATE SET counter = counter + 1";
+            var sql = "UPDATE SET counter = counter + 1 WHERE task_id = $1";
             return request.bindOnTask(h.createUpdate(sql))
+                .bind("$1", request.taskId)
                 .execute()
                 .then();
         });
