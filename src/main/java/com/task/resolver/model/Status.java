@@ -1,5 +1,7 @@
 package com.task.resolver.model;
 
+import reactor.core.publisher.Mono;
+
 import static java.lang.String.format;
 
 public enum Status {
@@ -14,6 +16,10 @@ public enum Status {
     COMPLETED(7);
 
     public final int value;
+
+    public Mono<Status> asMono() {
+        return Mono.just(this);
+    }
 
     Status(int i) {
         this.value = i;
