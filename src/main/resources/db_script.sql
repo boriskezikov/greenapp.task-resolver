@@ -20,7 +20,8 @@ CREATE TABLE public.task
     task_id BIGINT PRIMARY KEY,
     status  public.task_status    NOT NULL,
     counter BIGINT    DEFAULT (0) NOT NULL,
-    created timestamp DEFAULT now()
+    created timestamp DEFAULT now(),
+    CONSTRAINT unique_task_id_constr UNIQUE (task_id)
 );
 
 CREATE TABLE public.client

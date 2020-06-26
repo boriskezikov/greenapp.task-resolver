@@ -1,7 +1,10 @@
 package com.task.resolver.service.rest;
 
 import com.task.resolver.model.Status;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.ToString;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -24,6 +27,15 @@ public class RestAdapter {
             .attribute("status", request.status.toString())
             .exchange()
             .then();
+    }
+
+    public Mono<Task> getTaskById(Long taskId) {
+        return WebClient.create(taskProviderUrl)
+            .get()
+            .uri("/task-provider/task/" + taskId.toString())
+            .header("X-GREEN-APP-ID", "GREEN")
+            .exchange()
+            .flatMap(r -> r.bodyToMono(Task.class));
     }
 
     public Mono<Void> accrualMoney(AccrualMoneyRequest request) {
@@ -54,5 +66,16 @@ public class RestAdapter {
         public final Long clientId;
         public final Long amount;
         public final String initiator = "task-resolver";
+    }
+
+    @ToString
+    @Getter
+    @AllArgsConstructor
+    public class Task {
+
+        public final Long id;
+        public final Long reward;
+        public final Long assignee;
+        public final Long createdBy;
     }
 }

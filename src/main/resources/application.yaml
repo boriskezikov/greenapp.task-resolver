@@ -32,3 +32,4 @@ client:
     approve-attendee: 100
     complete-attendee: 100
     trash-attendee: 20
+    creator: 200

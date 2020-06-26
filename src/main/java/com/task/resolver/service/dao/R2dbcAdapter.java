@@ -91,8 +91,8 @@ public class R2dbcAdapter {
         }
         var sql = format(
             "DELETE FROM public.task "
-                + "WHERE (created * %d * interval '1 second' <= now() AND counter < $1) "
-                + "OR (created * %d * interval '1 second' <= now() AND counter < $2) "
+                + "WHERE (created * %d * interval '1 second' <= now() AND counter < $1 AND status = 'WAITING_FOR_APPROVE'::task_status) "
+                + "OR (created * %d * interval '1 second' <= now() AND counter < $2) AND status = 'RESOLVED'::task_status "
                 + "RETURNING (task_id, CAST(status AS VARCHAR))",
             request.approvingShift, request.completingShift);
         return handle.createQuery(sql)
@@ -107,10 +107,11 @@ public class R2dbcAdapter {
         }
         var sql = format(
             "DELETE FROM public.task "
-                + "WHERE created * %d * interval '1 second' > now() AND counter >= $1 "
+                + "WHERE created * %d * interval '1 second' > now() AND counter >= $1 AND status = $2::task_status"
                 + "RETURNING (task_id, CAST(status AS VARCHAR))", request.shift);
         return handle.createQuery(sql)
             .bind("$1", request.counter)
+            .bind("$2", request.status.toString())
             .mapRow(TaskEntry::fromDeleteRow);
     }
 

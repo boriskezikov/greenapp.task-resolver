@@ -37,6 +37,8 @@ public class CheckTaskScheduledOperation extends Thread {
     private Long completeReward;
     @Value("${client.reward.trash-attendee}")
     private Long trashReward;
+    @Value("${client.reward.creator}")
+    private Long creatorReward;
 
     private static final Logger log = LoggerFactory.getLogger(CheckTaskScheduledOperation.class);
 
@@ -50,8 +52,9 @@ public class CheckTaskScheduledOperation extends Thread {
 
     @EventListener(ApplicationStartedEvent.class)
     public void init() {
-        this.approvingRequest = new FindByTimeShiftAndCounterRequest(waitingForApproveStatusShift, waitingForApproveStatusCount);
-        this.completingRequest = new FindByTimeShiftAndCounterRequest(resolvedStatusShift, resolvedStatusCount);
+        this.approvingRequest =
+            new FindByTimeShiftAndCounterRequest(waitingForApproveStatusShift, waitingForApproveStatusCount, Status.WAITING_FOR_APPROVE);
+        this.completingRequest = new FindByTimeShiftAndCounterRequest(resolvedStatusShift, resolvedStatusCount, Status.RESOLVED);
         this.trashingRequest = new FindByTasksForTrashingRequest(
             waitingForApproveStatusShift, waitingForApproveStatusCount,
             resolvedStatusShift, resolvedStatusCount);
@@ -61,8 +64,7 @@ public class CheckTaskScheduledOperation extends Thread {
     @SneakyThrows
     public void run() {
         handler.inTxMono(h -> {
-            var readyForCompletingFlux = r2dbcAdapter.findTasksForApproving(h, approvingRequest)
-                .cache();
+            var readyForCompletingFlux = r2dbcAdapter.findTasksForApproving(h, approvingRequest).cache();
             var readyForApprovingFlux = r2dbcAdapter.findTasksForApproving(h, completingRequest).cache();
             var readyForTrashingFlux = r2dbcAdapter.findTasksForTrashing(h, trashingRequest).cache();
 
@@ -77,7 +79,7 @@ public class CheckTaskScheduledOperation extends Thread {
                 .flatMap(c -> restAdapter.accrualMoney(new AccrualMoneyRequest(c, trashReward)));
 
             var statusToApprove = readyForApprovingFlux
-                .flatMap(t -> restAdapter.changeTaskStatus(new ChangeTaskStatusRequest(Status.APPROVED, t.task_id)));
+                .flatMap(t -> restAdapter.changeTaskStatus(new ChangeTaskStatusRequest(Status.TO_DO, t.task_id)));
             var statusToComplete = readyForApprovingFlux
                 .flatMap(t -> restAdapter.changeTaskStatus(new ChangeTaskStatusRequest(Status.COMPLETED, t.task_id)));
             var statusToTrashed = readyForApprovingFlux
@@ -90,10 +92,18 @@ public class CheckTaskScheduledOperation extends Thread {
                 .collectList()
                 .flatMap(l -> r2dbcAdapter.deleteClients(h, l));
 
+            var creatorAndAssigneeReward = readyForApprovingFlux
+                .concatWith(readyForCompletingFlux)
+                .flatMap(t -> restAdapter.getTaskById(t.task_id))
+                .flatMap(t -> Mono.when(
+                    restAdapter.accrualMoney(new AccrualMoneyRequest(t.assignee, t.reward)),
+                    restAdapter.accrualMoney(new AccrualMoneyRequest(t.createdBy, creatorReward))
+                ));
+
             return Mono.when(
                 approvingClientReward, completingClientReward, trashingClientReward,
                 statusToApprove, statusToComplete, statusToTrashed,
-                cleanUpClientEntries);
+                cleanUpClientEntries, creatorAndAssigneeReward);
         })
             .as(logProcess(log, "CheckTaskScheduledOperation"))
             .subscribe();
@@ -104,6 +114,7 @@ public class CheckTaskScheduledOperation extends Thread {
 
         public final Long shift;
         public final Long counter;
+        public final Status status;
     }
 
     @RequiredArgsConstructor
