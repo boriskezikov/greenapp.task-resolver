@@ -4,11 +4,11 @@ spring:
   profiles:
     active:
 db:
-  host: ec2-52-44-166-58.compute-1.amazonaws.com
+  host: ec2-54-75-246-118.eu-west-1.compute.amazonaws.com
   port: 5432
-  database: d9gpt70d96ibeo
-  username: ivwpvmnbfnrity
-  password: 8b64f5b33535a1bd31f4872f4b7319c63543c6286399ad1183e88035abce8880
+  database: d9l8av2g72eh0o
+  username: mzmftvajoxvdzl
+  password: 7bb000c24a14d37c1d99b25b3eb5fee3bc703149af9161b2923e4c3029210c40
 rest:
   base-url:
     task-provider: http://greenapp-task-provider.herokuapp.com
