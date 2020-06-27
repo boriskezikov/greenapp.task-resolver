@@ -1,10 +1,9 @@
 package com.task.resolver.service.rest;
 
 import com.task.resolver.model.Status;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
-import lombok.ToString;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -22,10 +21,10 @@ public class RestAdapter {
     public Mono<Void> changeTaskStatus(ChangeTaskStatusRequest request) {
         return WebClient.create(taskProviderUrl)
             .patch()
-            .uri("/task-provider/task/" + request.taskId.toString())
+            .uri("/task-provider/task/{id}?status={type}", request.taskId, request.status.toString())
             .header("X-GREEN-APP-ID", "GREEN")
-            .attribute("status", request.status.toString())
             .exchange()
+            .map(e -> e)
             .then();
     }
 
@@ -40,12 +39,13 @@ public class RestAdapter {
 
     public Mono<Void> accrualMoney(AccrualMoneyRequest request) {
         return WebClient.create(rewardManagerUrl)
-            .patch()
-            .uri("/task-provider/accrual")
+            .post()
+            .uri("/reward-manager/accrual")
             .header("X-GREEN-APP-ID", "GREEN")
             .header("X-GREEN-APP-INITIATOR", "TASK-RESOLVER")
             .bodyValue(request)
             .exchange()
+            .map(r -> r)
             .then();
     }
 
@@ -68,14 +68,13 @@ public class RestAdapter {
         public final String initiator = "task-resolver";
     }
 
-    @ToString
-    @Getter
-    @AllArgsConstructor
-    public class Task {
+    @Data
+    @NoArgsConstructor
+    public static class Task {
 
-        public final Long id;
-        public final Long reward;
-        public final Long assignee;
-        public final Long createdBy;
+        private Long id;
+        private Long reward;
+        private Long assignee;
+        private Long createdBy;
     }
 }

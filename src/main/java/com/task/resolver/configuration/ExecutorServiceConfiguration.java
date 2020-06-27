@@ -14,7 +14,7 @@ public class ExecutorServiceConfiguration {
     @Bean
     public ExecutorService executorService(CheckTaskScheduledOperation scheduledOperation) {
         var scheduler = Executors.newScheduledThreadPool(3);
-        scheduler.scheduleWithFixedDelay(scheduledOperation, 0, 1, TimeUnit.MINUTES);
+        scheduler.scheduleWithFixedDelay(scheduledOperation, 10, 60, TimeUnit.SECONDS);
         return scheduler;
     }
 }

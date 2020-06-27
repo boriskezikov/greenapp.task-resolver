@@ -1,6 +1,7 @@
 package com.task.resolver.controller;
 
 import com.task.resolver.logic.VoteForTaskOperation;
+import com.task.resolver.logic.VoteForTaskOperation.VoteForTaskRequest;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,10 +22,10 @@ public class RestController {
     private final VoteForTaskOperation voteForTaskOperation;
 
     @PostMapping("/vote")
-    public Mono<Void> voteForTask(@Valid @RequestBody VoteForTaskOperation.VoteForTaskRequest request) {
+    public Mono<Void> voteForTask(@Valid @RequestBody VoteForTaskRequest request) {
         return Mono.just(request)
             .flatMap(voteForTaskOperation::process)
-            .doOnSubscribe(s -> log.info("RestController.findTasks.in request = {}", request))
-            .doOnSuccess(s -> log.info("RestController.findTasks.out"));
+            .doOnSubscribe(s -> log.info("RestController.voteForTask.in request = {}", request))
+            .doOnSuccess(s -> log.info("RestController.voteForTask.out"));
     }
 }

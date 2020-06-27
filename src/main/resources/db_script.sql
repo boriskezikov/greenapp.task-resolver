@@ -26,8 +26,9 @@ CREATE TABLE public.task
 
 CREATE TABLE public.client
 (
-    client_id BIGINT PRIMARY KEY,
+    client_id BIGINT,
     task_id   BIGINT           NOT NULL,
-    type      public.vote_type NOT NULL
+    type      public.vote_type NOT NULL,
+    PRIMARY KEY (task_id, client_id)
 );
 

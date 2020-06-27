@@ -12,7 +12,6 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.util.List;
 import javax.annotation.Nullable;
 
 import static java.lang.String.format;
@@ -34,10 +33,20 @@ public class R2dbcAdapter {
         });
     }
 
-    public Mono<Void> insertTaskVote(VoteForTaskRequest request) {
+    public Mono<Void> insertTaskVotePlus(VoteForTaskRequest request) {
         return this.handler.withHandle(h -> {
-            var sql = "UPDATE SET counter = counter + 1 WHERE task_id = $1";
-            return request.bindOnTask(h.createUpdate(sql))
+            var sql = "UPDATE public.task SET counter = counter + 1 WHERE task_id = $1";
+            return h.createUpdate(sql)
+                .bind("$1", request.taskId)
+                .execute()
+                .then();
+        });
+    }
+
+    public Mono<Void> insertTaskVoteMinus(VoteForTaskRequest request) {
+        return this.handler.withHandle(h -> {
+            var sql = "UPDATE public.task SET counter = counter - 1 WHERE task_id = $1";
+            return h.createUpdate(sql)
                 .bind("$1", request.taskId)
                 .execute()
                 .then();
@@ -59,7 +68,7 @@ public class R2dbcAdapter {
         }
         var sql = "INSERT INTO public.task(task_id, status) VALUES($1, $2::task_status) "
             + "ON CONFLICT ON CONSTRAINT unique_task_id_constr "
-            + "DO UPDATE status = $2::task_status";
+            + "DO UPDATE SET status = $2::task_status WHERE task.task_id = $1";
         return request.bindOnInsert(handle.createUpdate(sql))
             .execute()
             .then();
@@ -91,14 +100,12 @@ public class R2dbcAdapter {
         }
         var sql = format(
             "DELETE FROM public.task "
-                + "WHERE (created * %d * interval '1 second' <= now() AND counter < $1 AND status = 'WAITING_FOR_APPROVE'::task_status) "
-                + "OR (created * %d * interval '1 second' <= now() AND counter < $2) AND status = 'RESOLVED'::task_status "
-                + "RETURNING (task_id, CAST(status AS VARCHAR))",
+                + "WHERE (created + %d * interval '1 minutes' <= now() AND status = 'WAITING_FOR_APPROVE'::task_status) "
+                + "OR (created + %d * interval '1 minutes' <= now() AND status = 'RESOLVED'::task_status) "
+                + "RETURNING task_id, CAST(status AS VARCHAR)",
             request.approvingShift, request.completingShift);
         return handle.createQuery(sql)
-            .bind("$1", request.approvingCounter)
-            .bind("$2", request.completingCounter)
-            .mapRow(TaskEntry::fromGetByIdRow);
+            .mapRow(TaskEntry::fromDeleteRow);
     }
 
     public Flux<TaskEntry> findTasksForApproving(@Nullable Handle handle, FindByTimeShiftAndCounterRequest request) {
@@ -107,8 +114,8 @@ public class R2dbcAdapter {
         }
         var sql = format(
             "DELETE FROM public.task "
-                + "WHERE created * %d * interval '1 second' > now() AND counter >= $1 AND status = $2::task_status"
-                + "RETURNING (task_id, CAST(status AS VARCHAR))", request.shift);
+                + "WHERE created + %d * interval '1 minutes' > now() AND counter >= $1 AND status = $2::task_status "
+                + "RETURNING task_id, CAST(status AS VARCHAR)", request.shift);
         return handle.createQuery(sql)
             .bind("$1", request.counter)
             .bind("$2", request.status.toString())
@@ -127,7 +134,7 @@ public class R2dbcAdapter {
             .mapRow(r -> r.get("client_id", Long.class));
     }
 
-    public Mono<Void> deleteClients(@Nullable Handle handle, List<Long> taskId) {
+    public Mono<Void> deleteClients(@Nullable Handle handle, Long taskId) {
         if (isNull(handle)) {
             return this.handler.withHandle(h -> deleteClients(h, taskId));
         }

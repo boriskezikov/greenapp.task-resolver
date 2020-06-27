@@ -17,8 +17,6 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
-import static com.task.resolver.utils.Utils.logProcess;
-
 @Component
 @RequiredArgsConstructor
 public class CheckTaskScheduledOperation extends Thread {
@@ -55,58 +53,73 @@ public class CheckTaskScheduledOperation extends Thread {
         this.approvingRequest =
             new FindByTimeShiftAndCounterRequest(waitingForApproveStatusShift, waitingForApproveStatusCount, Status.WAITING_FOR_APPROVE);
         this.completingRequest = new FindByTimeShiftAndCounterRequest(resolvedStatusShift, resolvedStatusCount, Status.RESOLVED);
-        this.trashingRequest = new FindByTasksForTrashingRequest(
-            waitingForApproveStatusShift, waitingForApproveStatusCount,
-            resolvedStatusShift, resolvedStatusCount);
+        this.trashingRequest = new FindByTasksForTrashingRequest(waitingForApproveStatusShift, resolvedStatusShift);
     }
 
     @Override
     @SneakyThrows
     public void run() {
+        log.info("CheckTaskScheduledOperation.run.in");
         handler.inTxMono(h -> {
-            var readyForCompletingFlux = r2dbcAdapter.findTasksForApproving(h, approvingRequest).cache();
-            var readyForApprovingFlux = r2dbcAdapter.findTasksForApproving(h, completingRequest).cache();
-            var readyForTrashingFlux = r2dbcAdapter.findTasksForTrashing(h, trashingRequest).cache();
+            var readyForCompletingFlux = r2dbcAdapter.findTasksForApproving(h, completingRequest).cache();
 
-            var approvingClientReward = readyForApprovingFlux
+            readyForCompletingFlux
                 .flatMap(t -> r2dbcAdapter.findClientIdsForAccrual(h, new FindClientIdsForAccrualRequest(t.task_id, Type.APPROVE)))
-                .flatMap(c -> restAdapter.accrualMoney(new AccrualMoneyRequest(c, approveReward)));
-            var completingClientReward = readyForCompletingFlux
-                .flatMap(t -> r2dbcAdapter.findClientIdsForAccrual(h, new FindClientIdsForAccrualRequest(t.task_id, Type.APPROVE)))
-                .flatMap(c -> restAdapter.accrualMoney(new AccrualMoneyRequest(c, completeReward)));
-            var trashingClientReward = readyForTrashingFlux
-                .flatMap(t -> r2dbcAdapter.findClientIdsForAccrual(h, new FindClientIdsForAccrualRequest(t.task_id, Type.REJECT)))
-                .flatMap(c -> restAdapter.accrualMoney(new AccrualMoneyRequest(c, trashReward)));
+                .flatMap(c -> restAdapter.accrualMoney(new AccrualMoneyRequest(c, completeReward))).subscribe();
 
-            var statusToApprove = readyForApprovingFlux
-                .flatMap(t -> restAdapter.changeTaskStatus(new ChangeTaskStatusRequest(Status.TO_DO, t.task_id)));
-            var statusToComplete = readyForApprovingFlux
-                .flatMap(t -> restAdapter.changeTaskStatus(new ChangeTaskStatusRequest(Status.COMPLETED, t.task_id)));
-            var statusToTrashed = readyForApprovingFlux
-                .flatMap(t -> restAdapter.changeTaskStatus(new ChangeTaskStatusRequest(Status.TRASHED, t.task_id)));
+            readyForCompletingFlux
+                .flatMap(t -> restAdapter.changeTaskStatus(new ChangeTaskStatusRequest(Status.COMPLETED, t.task_id)))
+                .subscribe();
 
-            var cleanUpClientEntries = readyForApprovingFlux
-                .concatWith(readyForCompletingFlux)
-                .concatWith(readyForTrashingFlux)
-                .map(t -> t.task_id)
-                .collectList()
-                .flatMap(l -> r2dbcAdapter.deleteClients(h, l));
+            readyForCompletingFlux
+                .flatMap(t -> r2dbcAdapter.deleteClients(h, t.task_id))
+                .subscribe();
 
-            var creatorAndAssigneeReward = readyForApprovingFlux
-                .concatWith(readyForCompletingFlux)
+            readyForCompletingFlux
                 .flatMap(t -> restAdapter.getTaskById(t.task_id))
                 .flatMap(t -> Mono.when(
-                    restAdapter.accrualMoney(new AccrualMoneyRequest(t.assignee, t.reward)),
-                    restAdapter.accrualMoney(new AccrualMoneyRequest(t.createdBy, creatorReward))
-                ));
+                    restAdapter.accrualMoney(new AccrualMoneyRequest(t.getAssignee(), t.getReward())),
+                    restAdapter.accrualMoney(new AccrualMoneyRequest(t.getCreatedBy(), creatorReward))
+                )).subscribe();
 
-            return Mono.when(
-                approvingClientReward, completingClientReward, trashingClientReward,
-                statusToApprove, statusToComplete, statusToTrashed,
-                cleanUpClientEntries, creatorAndAssigneeReward);
-        })
-            .as(logProcess(log, "CheckTaskScheduledOperation"))
-            .subscribe();
+            return Mono.just(1);
+        }).block();
+
+        handler.inTxMono(h -> {
+            var readyForApprovingFlux = r2dbcAdapter.findTasksForApproving(h, approvingRequest).cache();
+
+            readyForApprovingFlux
+                .flatMap(t -> r2dbcAdapter.findClientIdsForAccrual(h, new FindClientIdsForAccrualRequest(t.task_id, Type.APPROVE)))
+                .flatMap(c -> restAdapter.accrualMoney(new AccrualMoneyRequest(c, approveReward)))
+                .subscribe();
+
+            readyForApprovingFlux
+                .flatMap(t -> restAdapter.changeTaskStatus(new ChangeTaskStatusRequest(Status.TO_DO, t.task_id)))
+                .subscribe();
+
+            readyForApprovingFlux
+                .flatMap(t -> r2dbcAdapter.deleteClients(h, t.task_id))
+                .subscribe();
+
+            return Mono.just(1);
+        }).block();
+
+        handler.inTxMono(h -> {
+            var readyForTrashingFlux = r2dbcAdapter.findTasksForTrashing(h, trashingRequest).cache();
+
+            readyForTrashingFlux
+                .flatMap(t -> r2dbcAdapter.findClientIdsForAccrual(h, new FindClientIdsForAccrualRequest(t.task_id, Type.REJECT)))
+                .flatMap(c -> restAdapter.accrualMoney(new AccrualMoneyRequest(c, trashReward))).subscribe();
+
+            readyForTrashingFlux
+                .flatMap(t -> restAdapter.changeTaskStatus(new ChangeTaskStatusRequest(Status.TRASHED, t.task_id))).subscribe();
+
+            readyForTrashingFlux
+                .flatMap(t -> r2dbcAdapter.deleteClients(h, t.task_id)).subscribe();
+
+            return Mono.just(1);
+        }).block();
+        log.info("CheckTaskScheduledOperation.run.out");
     }
 
     @RequiredArgsConstructor
@@ -122,8 +135,6 @@ public class CheckTaskScheduledOperation extends Thread {
 
         public final Long approvingShift;
         public final Long completingShift;
-        public final Long approvingCounter;
-        public final Long completingCounter;
     }
 
     @RequiredArgsConstructor
